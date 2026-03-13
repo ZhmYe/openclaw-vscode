@@ -12,7 +12,7 @@ export class OpenClawClient extends EventEmitter {
     private ws: WebSocket | null = null;
     private url: string = '';
     private token: string = '';
-    private sessionKey: string = 'main';
+    private sessionKey: string = 'vscode-extension';
     private requestId: number = 0;
     private pendingRequests: Map<string, any> = new Map();
     private currentResponse: { runId: string; text: string } | null = null;
@@ -61,6 +61,7 @@ export class OpenClawClient extends EventEmitter {
         });
     }
 
+    
     private async sendConnectHandshake(token: string): Promise<void> {
         return new Promise((resolve, reject) => {
             const reqId = `connect-${Date.now()}`;
@@ -80,9 +81,15 @@ export class OpenClawClient extends EventEmitter {
                     },
                     auth: token ? { token } : undefined,
                     locale: 'en-US',
+                    role: 'operator',
+                    scopes: ["operator.read", "operator.write"],
+                    caps: [],
+                    commands: [],
+                    permissions: {},
+                    // auth: { "token": token ? {token} : undefined },
                     userAgent: 'openclaw-vscode/0.1.0'
                 }
-            };
+            };    
 
             this.pendingRequests.set(reqId, { resolve, reject });
             this.ws?.send(JSON.stringify(connectReq));
@@ -130,7 +137,7 @@ export class OpenClawClient extends EventEmitter {
 
     private handleMessage(message: any): void {
         console.log('Received message:', message);
-        
+
         // Handle responses
         if (message.type === 'res' && message.id) {
             const pending = this.pendingRequests.get(message.id);
@@ -168,7 +175,7 @@ export class OpenClawClient extends EventEmitter {
                     console.log('Event: agent, payload:', JSON.stringify(message.payload).substring(0, 200));
                     // Agent streaming events - accumulate text
                     // Stream can be 'stdout' or 'assistant'
-                    if (message.payload && (message.payload.stream === 'stdout' || message.payload.stream === 'assistant')) {
+                    if (message.payload && (message.payload.sessionKey == `agent:main:${this.sessionKey}`) && (message.payload.stream === 'stdout' || message.payload.stream === 'assistant')) {
                         const data = message.payload.data;
                         const runId = message.payload.runId;
                         
@@ -177,7 +184,7 @@ export class OpenClawClient extends EventEmitter {
                         if (data && data.text) {
                             // Accumulate text
                             if (!this.currentResponse || this.currentResponse.runId !== runId) {
-                                this.currentResponse = { runId, text: data.text };
+                                this.currentResponse = { runId, text: data.text};
                             } else {
                                 this.currentResponse.text = data.text; // Use latest text (already accumulated by Gateway)
                             }
@@ -190,7 +197,7 @@ export class OpenClawClient extends EventEmitter {
                                 timestamp: message.payload.ts || Date.now()
                             });
                         }
-                    } else if (message.payload && message.payload.stream === 'lifecycle') {
+                    } else if (message.payload && message.payload.stream === 'lifecycle' && (message.payload.sessionKey == `agent:main:${this.sessionKey}`)) {
                         const data = message.payload.data;
                         const runId = message.payload.runId;
                         
